@@ -140,10 +140,6 @@ def pad_image(download_dir, image, target_dir):
     # Save the resized image to disk
     cv2.imwrite(os.path.join(target_dir, image), resized)
     
-# google_photos_api = GooglePhotosApi()
-# creds = google_photos_api.run_local_server()
-# print(creds)
-
 if __name__ == "__main__":
 
     ######

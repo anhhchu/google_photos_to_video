@@ -1,0 +1,147 @@
+import pickle
+import os
+from google_auth_oauthlib.flow import Flow, InstalledAppFlow
+from googleapiclient.discovery import build
+# from googleapiclient.http import MediaFileUpload
+from google.auth.transport.requests import Request
+import requests
+from pathlib import Path
+
+import pandas as pd
+from datetime import date, timedelta, datetime
+import json
+
+
+class GooglePhotosApi:
+    def __init__(self,
+                 api_name='photoslibrary',
+                 client_secret_file=r'./credentials/client_secret.json',
+                 api_version='v1',
+                 scopes=['https://www.googleapis.com/auth/photoslibrary']):
+        '''
+        Args:
+            client_secret_file: string, location where the requested credentials are saved
+            api_version: string, the version of the service
+            api_name: string, name of the api e.g."docs","photoslibrary",...
+            api_version: version of the api
+        '''
+
+        self.api_name = api_name
+        self.client_secret_file = client_secret_file
+        self.api_version = api_version
+        self.scopes = scopes
+        self.cred_pickle_file = f'./credentials/token_{self.api_name}_{self.api_version}.pickle'
+
+        self.cred = None
+
+    def run_local_server(self):
+        # is checking if there is already a pickle file with relevant credentials
+        if os.path.exists(self.cred_pickle_file):
+            with open(self.cred_pickle_file, 'rb') as token:
+                self.cred = pickle.load(token)
+
+        # if there is no pickle file with stored credentials, create one using google_auth_oauthlib.flow
+        if not self.cred or not self.cred.valid:
+            if self.cred and self.cred.expired and self.cred.refresh_token:
+                self.cred.refresh(Request())
+            else:
+                flow = InstalledAppFlow.from_client_secrets_file(
+                    self.client_secret_file, self.scopes)
+                self.cred = flow.run_local_server()
+
+            with open(self.cred_pickle_file, 'wb') as token:
+                pickle.dump(self.cred, token)
+
+        return self.cred
+
+
+def get_response_from_medium_api(year, month, day):
+    url = 'https://photoslibrary.googleapis.com/v1/mediaItems:search'
+    payload = {"pageSize": 100,
+               "filters": {
+                   "dateFilter": {
+                       "dates": [
+                           {
+                               "day": day,
+                               "month": month,
+                               "year": year
+                           }
+                       ]
+                   },
+                   "mediaTypeFilter": {"mediaTypes": ["PHOTO"]},
+                   "contentFilter": {"includedContentCategories": ["PEOPLE"]}
+               }
+               }
+    headers = {
+        'content-type': 'application/json',
+        'Authorization': 'Bearer {}'.format(creds.token)
+    }
+
+    try:
+        res = requests.request(
+            "POST", url, data=json.dumps(payload), headers=headers)
+    except:
+        print('Request error')
+
+    return (res)
+
+
+def list_of_media_items(year, month, day):
+    '''
+    Args:
+        year, month, day: day for the filter of the API call 
+    Return:
+        items_df: media items uploaded on specified date
+    '''
+
+    items_list_df = pd.DataFrame()
+
+    # create request for specified date
+    response = get_response_from_medium_api(year, month, day)
+    print(len(response.json()["mediaItems"]))
+
+    try:
+        for item in response.json()['mediaItems']:
+            items_df = pd.DataFrame(item)
+            items_df = items_df.rename(
+                columns={"mediaMetadata": "creationTime"})
+            items_df.set_index('creationTime')
+            items_df = items_df[items_df.index == 'creationTime']
+
+            # append the existing media_items data frame
+            items_list_df = pd.concat([items_list_df, items_df])
+
+    except:
+        print(response.text)
+
+    items_list_df.set_index("id")
+
+    return items_list_df
+
+
+# google_photos_api = GooglePhotosApi()
+# creds = google_photos_api.run_local_server()
+
+# sdate = date(2023, 4, 2)
+# # media_items_df = pd.DataFrame()
+
+# items_list_df = list_of_media_items(sdate.year, sdate.month, sdate.day)
+# # print(items_list_df)
+# destination_folder = f'./downloads/{sdate.strftime("%Y-%m-%d")}'
+# Path(destination_folder).mkdir(exist_ok=True)
+
+# if len(items_list_df) > 0:
+#     for index, item in items_list_df.iterrows():
+#         url = item.baseUrl + "=d"
+
+#         response = requests.get(url)
+
+#         file_name = item.filename
+
+#         with open(os.path.join(destination_folder, file_name), 'wb') as f:
+#             f.write(response.content)
+            
+#     print(f'Downloaded items found for date: {sdate.year}/{sdate.month}/{sdate.day}')
+# else:
+#     print(f'No media items found for date: {sdate.year}/{sdate.month}/{sdate.day}')
+    

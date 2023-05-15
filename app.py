@@ -24,23 +24,11 @@ from moviepy.editor import *
 import cv2
 import numpy as np
 import argparse
+from download_image import download
+
 DEFAULT_ENCODINGS_PATH = Path("./face_recognizer/output/encodings.pkl")
 
-# create parser object
-parser = argparse.ArgumentParser(description='Create video from images')
 
-# add arguments to the parser object
-parser.add_argument('--date_str', type=str, help='The date to download images')
-parser.add_argument('--person', type=str, help='The target person to create video')
-
-# parse arguments
-args = parser.parse_args()
-
-# access the arguments' values
-date_str = args.date_str
-person = args.person
-
-print(date_str, person)
 
 def _recognize_face(unknown_encoding, loaded_encodings):
     """
@@ -141,42 +129,63 @@ def pad_image(download_dir, image, target_dir):
     cv2.imwrite(os.path.join(target_dir, image), resized)
     
 if __name__ == "__main__":
+    # create parser object
+    parser = argparse.ArgumentParser(description='Create video from images')
+
+    # add arguments to the parser object
+    parser.add_argument('--date_str', type=str, help='The date to download images')
+    parser.add_argument('--person', type=str, help='The target person to create video')
+
+    # parse arguments
+    args = parser.parse_args()
+
+    # access the arguments' values
+    date_str = args.date_str
+    person = args.person
+
+    if not date_str or not person:
+        raise Exception
 
     ######
     ## 1. Download Images from Google Photos for one specific day
     ######
     download_dir = f'./downloads/{date_str}'
-    return_value = os.system(f"./.venv/bin/python ./download_image.py --date_str {date_str}")
-    if return_value != 0:
-        raise Exception(f"Error downloading images: {return_value}")
 
+    try:
+        download(date_str)
+    except Exception as e:
+        raise Exception("Error downloading images")
+    
     ######
     ## 2. Detect images with only the target person face
     ######
-
     target_dir = f'./downloads/target/{date_str}'
-    encodings_location = DEFAULT_ENCODINGS_PATH
     ## create parents dir recursively
     Path(target_dir).mkdir(parents=True, exist_ok=True)
     
-    ## load saved face encoding using pickl
-    print(f"---Loading encodings from {encodings_location}---")
-    with encodings_location.open(mode="rb") as f:
-        loaded_encodings = pickle.load(f)
+    if os.path.exists(DEFAULT_ENCODINGS_PATH):
+        encodings_location = DEFAULT_ENCODINGS_PATH
+    
+        ## load saved face encoding using pickl
+        print(f"---Loading encodings from {encodings_location}---")
+        with encodings_location.open(mode="rb") as f:
+            loaded_encodings = pickle.load(f)
 
-    for image in os.listdir(download_dir):
-        # print(filepath)
-        if recognize_faces(os.path.join(download_dir, image), person):
-            # shutil.copy(filepath, target_dir)
-            pad_image(download_dir, image, target_dir)
+        for image in os.listdir(download_dir):
+            # print(filepath)
+            if recognize_faces(os.path.join(download_dir, image), person):
+                # shutil.copy(filepath, target_dir)
+                pad_image(download_dir, image, target_dir)
+    else:
+        print("Face detection skipped")
 
     ######
     ## 3. Create video of the target person images
     ######
-    # https://www.tutorialexample.com/python-moviepy-convert-different-size-images-png-jpg-to-video-python-moviepy-tutorial/
     create_video(target_dir, "./audio/vacation-beat.mp3", f"./output_videos/{date_str}.mp4")
 
     ######
     ## 4. Upload video back to Google Photos 
     ######
+
 

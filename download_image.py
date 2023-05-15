@@ -12,19 +12,7 @@ import pandas as pd
 from datetime import date, timedelta, datetime
 import json
 import argparse
-
-# create parser object
-parser = argparse.ArgumentParser(description='Download images from Google Photos')
-
-# add arguments to the parser object
-parser.add_argument('--date_str', type=str, help='The date_str to download images')
-
-# parse arguments
-args = parser.parse_args()
-
-# access the arguments' values
-date_str = args.date_str
-print(date_str)
+import sys
 
 
 class GooglePhotosApi:
@@ -66,11 +54,10 @@ class GooglePhotosApi:
 
             with open(self.cred_pickle_file, 'wb') as token:
                 pickle.dump(self.cred, token)
-
         return self.cred
 
 
-def get_response_from_medium_api(year, month, day):
+def get_response_from_medium_api(year, month, day, creds):
     url = 'https://photoslibrary.googleapis.com/v1/mediaItems:search'
     payload = {"pageSize": 100,
                "filters": {
@@ -101,7 +88,7 @@ def get_response_from_medium_api(year, month, day):
     return (res)
 
 
-def list_of_media_items(year, month, day):
+def list_of_media_items(year, month, day, creds):
     '''
     Args:
         year, month, day: day for the filter of the API call 
@@ -112,8 +99,7 @@ def list_of_media_items(year, month, day):
     items_list_df = pd.DataFrame()
 
     # create request for specified date
-    response = get_response_from_medium_api(year, month, day)
-    print(len(response.json()["mediaItems"]))
+    response = get_response_from_medium_api(year, month, day, creds)
 
     try:
         for item in response.json()['mediaItems']:
@@ -125,37 +111,33 @@ def list_of_media_items(year, month, day):
 
             # append the existing media_items data frame
             items_list_df = pd.concat([items_list_df, items_df])
-
-    except:
+            items_list_df.set_index("id")
+    except Exception:
         print(response.text)
-
-    items_list_df.set_index("id")
-
     return items_list_df
 
-if __name__ == "__main__":
+
+def download(date_str):
     google_photos_api = GooglePhotosApi()
     creds = google_photos_api.run_local_server()
-    print(creds)
-
-    # date_str = "2023-04-02"
 
     download_dir = f'./downloads/{date_str}'
     # download_image(date_str, download_dir)
     year, month, day = date_str.split("-")
     DATE = date(int(year), int(month), int(day))
-    items_list_df = list_of_media_items(DATE.year, DATE.month, DATE.day, )
+    items_list_df = list_of_media_items(DATE.year, DATE.month, DATE.day, creds)
+    print(f"Number of images to download {len(items_list_df)}")
 
     try:
         shutil.rmtree(download_dir)
     except:
         print(f"{download_dir} not exists")
 
-    Path(download_dir).mkdir(exist_ok=True)
+    Path(download_dir).mkdir(parents=True, exist_ok=True)
 
     if len(items_list_df) > 0:
         for index, item in items_list_df.iterrows():
-            # Download full resolution images without 
+            # Download full resolution images
             url = item.baseUrl + "=d"
 
             response = requests.get(url)
@@ -172,4 +154,8 @@ if __name__ == "__main__":
         print(f'Downloaded items found for date_str: {DATE.year}/{DATE.month}/{DATE.day}')
     else:
         print(f'No media items found for date_str: {DATE.year}/{DATE.month}/{DATE.day}')
+        sys.exit(1)
     
+
+# if __name__ == "__main__":
+#     download_images(date_str)

@@ -6,10 +6,25 @@ from googleapiclient.discovery import build
 from google.auth.transport.requests import Request
 import requests
 from pathlib import Path
+import shutil
 
 import pandas as pd
 from datetime import date, timedelta, datetime
 import json
+import argparse
+
+# create parser object
+parser = argparse.ArgumentParser(description='Download images from Google Photos')
+
+# add arguments to the parser object
+parser.add_argument('--date_str', type=str, help='The date_str to download images')
+
+# parse arguments
+args = parser.parse_args()
+
+# access the arguments' values
+date_str = args.date_str
+print(date_str)
 
 
 class GooglePhotosApi:
@@ -119,29 +134,42 @@ def list_of_media_items(year, month, day):
     return items_list_df
 
 
-# google_photos_api = GooglePhotosApi()
-# creds = google_photos_api.run_local_server()
+if __name__ == "__main__":
+    google_photos_api = GooglePhotosApi()
+    creds = google_photos_api.run_local_server()
+    print(creds)
 
-# sdate = date(2023, 4, 2)
-# # media_items_df = pd.DataFrame()
+    download_dir = f'./downloads/{date_str}'
+    # download_image(date_str, download_dir)
+    year, month, day = date_str.split("-")
+    DATE = date(int(year), int(month), int(day))
+    items_list_df = list_of_media_items(DATE.year, DATE.month, DATE.day, )
+    print(f"Number of images to download {len(items_list_df)}")
 
-# items_list_df = list_of_media_items(sdate.year, sdate.month, sdate.day)
-# # print(items_list_df)
-# destination_folder = f'./downloads/{sdate.strftime("%Y-%m-%d")}'
-# Path(destination_folder).mkdir(exist_ok=True)
+    try:
+        shutil.rmtree(download_dir)
+    except:
+        print(f"{download_dir} not exists")
 
-# if len(items_list_df) > 0:
-#     for index, item in items_list_df.iterrows():
-#         url = item.baseUrl + "=d"
+    Path(download_dir).mkdir(parents=True, exist_ok=True)
 
-#         response = requests.get(url)
+    if len(items_list_df) > 0:
+        for index, item in items_list_df.iterrows():
+            # Download full resolution images
+            url = item.baseUrl + "=d"
 
-#         file_name = item.filename
+            response = requests.get(url)
 
-#         with open(os.path.join(destination_folder, file_name), 'wb') as f:
-#             f.write(response.content)
-            
-#     print(f'Downloaded items found for date: {sdate.year}/{sdate.month}/{sdate.day}')
-# else:
-#     print(f'No media items found for date: {sdate.year}/{sdate.month}/{sdate.day}')
+            file_name = item.filename
+
+            # convert heic file to jpeg file
+            if file_name.lower().endswith('.heic'):
+                file_name = os.path.splitext(file_name)[0] + '.jpg'
+
+            with open(os.path.join(download_dir, file_name), 'wb') as f:
+                f.write(response.content)
+                
+        print(f'Downloaded items found for date_str: {DATE.year}/{DATE.month}/{DATE.day}')
+    else:
+        print(f'No media items found for date_str: {DATE.year}/{DATE.month}/{DATE.day}')
     
